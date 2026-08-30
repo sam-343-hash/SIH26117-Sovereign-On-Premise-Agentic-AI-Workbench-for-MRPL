@@ -1,9 +1,14 @@
-from fastapi import APIRouter, Query
-from app.services.rag_service import search
+from fastapi import APIRouter
+from pydantic import BaseModel
+from app.services.rag_service import query_rag
 
-router = APIRouter()
+router = APIRouter(prefix="/api/rag", tags=["RAG"])
 
+class SearchRequest(BaseModel):
+    query: str
+    limit: int = 4
 
-@router.get("/search")
-def rag_search(q: str = Query(..., min_length=1)):
-    return search(q)
+@router.post("/search")
+async def execute_rag_search(req: SearchRequest):
+    results = await query_rag(req.query, n_results=req.limit)
+    return {"query": req.query, "matches": results}

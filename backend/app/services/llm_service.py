@@ -1,74 +1,42 @@
 import os
-import re
+import json
+import httpx
+from typing import AsyncGenerator
 
-import ollama
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+CHAT_MODEL = os.getenv("CHAT_MODEL", "qwen2.5:7b-instruct-q4_K_M")
 
-from app.services.rag_service import search
+async def stream_chat_completion(prompt: str, context_chunks: list[dict]) -> AsyncGenerator[str, None]:
+    system_instruction = (
+        "You are RefinaAI, an industrial intelligence assistant for refinery operations.\n"
+        "Use ONLY the operational context provided below. If unsure, state that plant records "
+        "do not contain the answer. Always cite sources precisely.\n\n"
+        "CONTEXT CHUNKS:\n"
+    )
+    for idx, c in enumerate(context_chunks, start=1):
+        system_instruction += f"[{idx}] (Doc: {c.get('filename')}, Page {c.get('page', 1)}): {c.get('text')}\n\n"
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "qwen3:14b")
+    payload = {
+        "model": CHAT_MODEL,
+        "messages": [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": prompt}
+        ],
+        "stream": True,
+        "options": {"temperature": 0.1, "top_p": 0.9},
+        "keep_alive": -1
+    }
 
-
-def _strip_reasoning_trace(content: str) -> str:
-    """Keep Qwen reasoning tokens out of the operator-facing answer."""
-    return re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
-
-
-def _build_prompt(message: str, chunks: list[dict]) -> str:
-    context_blocks = []
-    for index, chunk in enumerate(chunks, start=1):
-        doc = chunk.get("doc", "Unknown document")
-        page = chunk.get("page")
-        snippet = chunk.get("snippet") or chunk.get("text") or ""
-        page_label = f", page {page}" if page else ""
-        context_blocks.append(f"[{index}] Source: {doc}{page_label}\n{snippet}")
-
-    context = "\n\n".join(context_blocks) or "No indexed refinery documents were retrieved."
-    return f"""You are RefinaAI, a refinery operations assistant for refinery engineers and safety teams.
-Answer the user's question using only the retrieved context below.
-
-Rules:
-- Be concise, operational, and safety-aware.
-- Cite source document names and page numbers when context is available.
-- If the answer is not supported by the context, say what is missing and suggest which document to upload.
-- Do not invent procedures, thresholds, permits, or compliance claims.
-
-Retrieved context:
-{context}
-
-User question:
-{message}
-"""
-
-
-def generate_answer(message: str):
-    chunks = search(message, k=4)
-    citations = [
-        {"label": chunk.get("doc", "Unknown document"), "page": chunk.get("page")}
-        for chunk in chunks
-        if chunk.get("doc")
-    ]
-
-    prompt = _build_prompt(message, chunks)
-    client = ollama.Client(host=OLLAMA_HOST)
-
-    try:
-        response = client.chat(
-            model=OLLAMA_CHAT_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are RefinaAI. Ground every operational answer in provided refinery documents.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            options={"temperature": 0.2},
-        )
-        answer = _strip_reasoning_trace(response["message"]["content"])
-    except Exception as exc:
-        answer = (
-            "I could not reach the local Ollama chat model yet. Start Ollama and make sure "
-            f"`{OLLAMA_CHAT_MODEL}` is pulled, then retry this question. Backend detail: {exc}"
-        )
-
-    return answer, citations
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        async with client.stream("POST", f"{OLLAMA_BASE_URL}/api/chat", json=payload) as response:
+            if response.status_code != 200:
+                yield f"data: {json.dumps({'error': f'LLM Gateway Error: {response.status_code}'})}\n\n"
+                return
+            async for line in response.aiter_lines():
+                if line:
+                    chunk = json.loads(line)
+                    content = chunk.get("message", {}).get("content", "")
+                    if content:
+                        yield f"data: {json.dumps({'content': content})}\n\n"
+                    if chunk.get("done", False):
+                        yield f"data: {json.dumps({'done': True})}\n\n"

@@ -1,28 +1,18 @@
-from pydantic import BaseModel
 from fastapi import APIRouter
-from app.services.llm_service import generate_answer
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from app.services.rag_service import query_rag
+from app.services.llm_service import stream_chat_completion
 
-router = APIRouter()
-
+router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
 class ChatRequest(BaseModel):
     message: str
-    thread_id: str | None = None
 
-
-class Citation(BaseModel):
-    label: str
-    page: int | None = None
-
-
-class ChatResponse(BaseModel):
-    content: str
-    citations: list[Citation] = []
-
-
-@router.post("/message", response_model=ChatResponse)
-def send_message(req: ChatRequest):
-    # Phase 3 replaces generate_answer's stub body with a real call to
-    # Ollama (Qwen3) using retrieved chunks from rag_service as context.
-    answer, citations = generate_answer(req.message)
-    return ChatResponse(content=answer, citations=citations)
+@router.post("/message")
+async def send_chat_message(req: ChatRequest):
+    retrieved_chunks = await query_rag(req.message, n_results=3)
+    return StreamingResponse(
+        stream_chat_completion(req.message, retrieved_chunks),
+        media_type="text/event-stream"
+    )

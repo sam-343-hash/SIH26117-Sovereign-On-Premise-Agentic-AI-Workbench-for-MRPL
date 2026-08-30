@@ -1,35 +1,27 @@
 from fastapi import APIRouter
+import httpx
+import os
 
-router = APIRouter()
+router = APIRouter(prefix="/api/admin", tags=["Admin"])
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
-_config = {
-    "chatModel": "qwen3:14b",
-    "visionModel": "qwen2.5-vl:7b",
-    "embeddingModel": "nomic-embed-text",
-    "vectorStore": "ChromaDB (local)",
-    "graphStore": "Neo4j (disabled)",
-    "temperature": 0.3,
-}
+@router.get("/status")
+async def get_system_status():
+    ollama_online = False
+    models = []
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            if resp.status_code == 200:
+                ollama_online = True
+                models = resp.json().get("models", [])
+    except Exception:
+        ollama_online = False
 
-
-@router.get("/config")
-def get_config():
-    return _config
-
-
-@router.put("/config")
-def update_config(new_config: dict):
-    _config.update(new_config)
-    return _config
-
-
-@router.get("/health")
-def system_health():
-    import shutil
-
-    return [
-        {"name": "Ollama Runtime", "status": "Healthy" if shutil.which("ollama") else "Not found", "detail": _config["chatModel"]},
-        {"name": "FastAPI Backend", "status": "Healthy", "detail": "v0.1.0"},
-        {"name": "ChromaDB", "status": "Healthy", "detail": "local persistent client"},
-        {"name": "Neo4j Graph", "status": "Disabled", "detail": "Enable in Phase 6"},
-    ]
+    return {
+        "engine_state": "HEALTHY",
+        "database": "SQLite WAL Active",
+        "vector_store": "ChromaDB Persistent (HNSW Cosine)",
+        "ollama_connectivity": ollama_online,
+        "loaded_models": [m.get("name") for m in models]
+    }

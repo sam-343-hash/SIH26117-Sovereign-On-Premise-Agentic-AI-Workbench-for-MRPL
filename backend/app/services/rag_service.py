@@ -1,104 +1,115 @@
-import hashlib
-import math
 import os
-from typing import Any
-
 import chromadb
-import ollama
+import pypdf
+import docx
+import httpx
+from sqlmodel import Session
+from app.database import engine
+from app.models.document import Document
+from app.services.safety_service import evaluate_safety_rules
+from app.services.graph_service import extract_knowledge_graph
 
-CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_db")
-CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "refinaai_docs")
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-FALLBACK_DIMENSIONS = 384
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
+CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
 
-_client = chromadb.PersistentClient(path=CHROMA_PATH)
-_collection = _client.get_or_create_collection(CHROMA_COLLECTION)
+chroma_client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
+collection = chroma_client.get_or_create_collection(
+    name="refinery_docs",
+    metadata={"hnsw:space": "cosine"}
+)
 
-
-def _fallback_embedding(text: str) -> list[float]:
-    values = [0.0] * FALLBACK_DIMENSIONS
-    tokens = text.lower().split()
-    for token in tokens:
-        digest = hashlib.sha256(token.encode("utf-8")).digest()
-        index = int.from_bytes(digest[:4], "big") % FALLBACK_DIMENSIONS
-        sign = 1.0 if digest[4] % 2 == 0 else -1.0
-        values[index] += sign
-
-    norm = math.sqrt(sum(value * value for value in values)) or 1.0
-    return [value / norm for value in values]
-
-
-def embed_text(text: str) -> tuple[list[float], str]:
-    client = ollama.Client(host=OLLAMA_HOST)
-    try:
-        response = client.embeddings(model=OLLAMA_EMBED_MODEL, prompt=text)
-        return response["embedding"], OLLAMA_EMBED_MODEL
-    except Exception:
-        return _fallback_embedding(text), "local-hash-fallback"
-
-
-def index_chunks(document_id: int, document_name: str, chunks: list[dict[str, Any]]) -> int:
-    if not chunks:
-        return 0
-
-    ids = []
-    documents = []
+async def get_embeddings(texts: list[str]) -> list[list[float]]:
     embeddings = []
-    metadatas = []
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for text in texts:
+            resp = await client.post(
+                f"{OLLAMA_BASE_URL}/api/embeddings",
+                json={"model": EMBED_MODEL, "prompt": text}
+            )
+            embeddings.append(resp.json()["embedding"])
+    return embeddings
 
-    for chunk in chunks:
-        text = chunk["text"].strip()
-        if not text:
-            continue
+def chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> list[str]:
+    words = text.split()
+    chunks = []
+    for i in range(0, len(words), chunk_size - overlap):
+        chunk = " ".join(words[i:i + chunk_size])
+        if chunk:
+            chunks.append(chunk)
+    return chunks
 
-        embedding, provider = embed_text(text)
-        chunk_index = chunk["chunk_index"]
-        ids.append(f"doc-{document_id}-chunk-{chunk_index}")
-        documents.append(text)
-        embeddings.append(embedding)
-        metadatas.append(
-            {
-                "document_id": document_id,
-                "source": document_name,
-                "page": chunk.get("page") or 1,
-                "chunk_index": chunk_index,
-                "embedding_provider": provider,
-            }
-        )
-
-    if not ids:
-        return 0
-
-    _collection.upsert(ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas)
-    return len(ids)
-
-
-def search(query: str, k: int = 5):
-    embedding, _provider = embed_text(query)
+async def process_document_pipeline(document_id: int, file_path: str):
     try:
-        results = _collection.query(query_embeddings=[embedding], n_results=k)
-    except Exception:
-        if len(embedding) == FALLBACK_DIMENSIONS:
-            return []
-        results = _collection.query(query_embeddings=[_fallback_embedding(query)], n_results=k)
+        extracted_pages = []
+        if file_path.endswith(".pdf"):
+            reader = pypdf.PdfReader(file_path)
+            for idx, page in enumerate(reader.pages, start=1):
+                extracted_pages.append((idx, page.extract_text() or ""))
+        elif file_path.endswith(".docx"):
+            doc = docx.Document(file_path)
+            full_text = "\n".join([p.text for p in doc.paragraphs])
+            extracted_pages.append((1, full_text))
+        else:
+            with open(file_path, "r", encoding="utf-8") as f:
+                extracted_pages.append((1, f.read()))
 
-    documents = results.get("documents", [[]])[0]
-    metadatas = results.get("metadatas", [[]])[0]
-    distances = results.get("distances", [[]])[0]
-    ids = results.get("ids", [[]])[0]
+        all_chunks = []
+        metadatas = []
+        ids = []
 
-    matches = []
-    for result_id, document, metadata, distance in zip(ids, documents, metadatas, distances):
-        score = 1.0 / (1.0 + max(0.0, float(distance)))
-        matches.append(
-            {
-                "id": result_id,
-                "doc": metadata.get("source", "Unknown document"),
-                "page": metadata.get("page", 1),
-                "snippet": document,
-                "score": round(score, 3),
-            }
-        )
+        with Session(engine) as session:
+            doc_record = session.get(Document, document_id)
+            filename = doc_record.filename if doc_record else "unknown"
 
-    return matches
+        for page_num, page_text in extracted_pages:
+            chunks = chunk_text(page_text)
+            for c_idx, chunk in enumerate(chunks):
+                chunk_id = f"doc_{document_id}_p{page_num}_c{c_idx}"
+                all_chunks.append(chunk)
+                ids.append(chunk_id)
+                metadatas.append({
+                    "document_id": document_id,
+                    "filename": filename,
+                    "page": page_num,
+                    "text": chunk
+                })
+
+        if all_chunks:
+            vectors = await get_embeddings(all_chunks)
+            collection.add(
+                ids=ids,
+                embeddings=vectors,
+                metadatas=metadatas,
+                documents=all_chunks
+            )
+
+        await evaluate_safety_rules(document_id, metadatas)
+        await extract_knowledge_graph(document_id, all_chunks)
+
+        with Session(engine) as session:
+            doc_record = session.get(Document, document_id)
+            if doc_record:
+                doc_record.status = "Indexed"
+                doc_record.total_pages = len(extracted_pages)
+                doc_record.chunk_count = len(all_chunks)
+                session.add(doc_record)
+                session.commit()
+
+    except Exception as e:
+        with Session(engine) as session:
+            doc_record = session.get(Document, document_id)
+            if doc_record:
+                doc_record.status = "Failed"
+                session.add(doc_record)
+                session.commit()
+        print(f"[INGESTION ERROR] Doc {document_id}: {e}")
+
+async def query_rag(query: str, n_results: int = 4) -> list[dict]:
+    query_vec = (await get_embeddings([query]))[0]
+    results = collection.query(query_embeddings=[query_vec], n_results=n_results)
+    hits = []
+    if results and results.get("metadatas"):
+        for meta in results["metadatas"][0]:
+            hits.append(meta)
+    return hits
