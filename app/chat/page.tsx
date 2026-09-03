@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { chatThreads, sampleConversation, type ChatMessage } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
 type ChatApiResponse = {
   content: string;
@@ -45,7 +45,7 @@ export default function ChatPage() {
     setThinking(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/chat/message`, {
+      const response = await fetch(`http://127.0.0.1:8000/api/chat/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: question, thread_id: activeThread }),
@@ -87,7 +87,7 @@ export default function ChatPage() {
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: `I could not reach the RefinaAI backend yet. Check that FastAPI is running on ${API_URL}. Detail: ${message}`,
+          content: `I could not reach the RefinaAI backend yet. Check that FastAPI is running on http://127.0.0.1:8000. Detail: ${message}`,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
