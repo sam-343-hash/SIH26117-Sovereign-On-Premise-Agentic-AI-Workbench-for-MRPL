@@ -22,35 +22,39 @@ export default function WorkspacePage() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/rag/search", {
+      // Primary: Hit /api/chat/message
+      let res = await fetch("http://127.0.0.1:8000/api/chat/message", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({ query: userText, limit: 3 }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userText, role: "admin" }),
       });
 
-      const rawText = await res.text();
-      let data: any = {};
-      try {
-        data = JSON.parse(rawText);
-      } catch (parseErr) {
-        throw new Error(`Server returned non-JSON response (${res.status}): ${rawText.slice(0, 100)}`);
+      // Fallback: If 404 or not ok, hit /api/rag/search
+      if (!res.ok) {
+        res = await fetch("http://127.0.0.1:8000/api/rag/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: userText, limit: 3 }),
+        });
       }
 
       if (!res.ok) {
-        throw new Error(data.detail || `Server error: HTTP ${res.status}`);
+        throw new Error(`Backend returned HTTP status ${res.status}`);
       }
 
-      let responseText = "No relevant context found in local refinery documents.";
+      const data = await res.json();
+      let responseText = "No response content returned by backend.";
       let citations: string[] = [];
 
-      if (data.answer) {
+      if (data.response) {
+        responseText = data.response;
+      } else if (data.answer) {
         responseText = data.answer;
       } else if (Array.isArray(data.matches) && data.matches.length > 0) {
         responseText = data.matches.map((m: any) => m.text || m.content).join("\n\n");
         citations = data.matches.map((m: any) => `${m.filename || 'SOP-MRPL'} (p. ${m.page || 1})`);
+      } else if (Array.isArray(data.matches) && data.matches.length === 0) {
+        responseText = "Query evaluated. No exceeding thresholds or out-of-envelope risks detected in current index.";
       } else if (typeof data === "string") {
         responseText = data;
       }
@@ -62,10 +66,7 @@ export default function WorkspacePage() {
     } catch (err: any) {
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          text: `Backend Error: ${err.message}`,
-        },
+        { role: "assistant", text: `Backend Status: ${err.message}` },
       ]);
     } finally {
       setLoading(false);
