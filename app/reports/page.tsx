@@ -1,117 +1,53 @@
 "use client";
-
-import * as React from "react";
-import { motion } from "framer-motion";
-import { FileText, Sparkles, Download, Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { reportTemplates } from "@/lib/mock-data";
-import { cn } from "@/lib/utils";
+import React, { useState } from "react";
 
 export default function ReportsPage() {
-  const [selected, setSelected] = React.useState(reportTemplates[0].id);
-  const [generating, setGenerating] = React.useState(false);
-  const [done, setDone] = React.useState(false);
+  const [downloading, setDownloading] = useState(false);
 
-  function generate() {
-    setGenerating(true);
-    setDone(false);
-    setTimeout(() => {
-      setGenerating(false);
-      setDone(true);
-    }, 1800);
-  }
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/reports/download");
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "RefinaAI_Compliance_Report.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      alert("Error connecting to backend report generator. Ensure backend is running on port 8000.");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-      <div className="space-y-3 xl:col-span-2">
-        {reportTemplates.map((t) => (
-          <Card
-            key={t.id}
-            onClick={() => {
-              setSelected(t.id);
-              setDone(false);
-            }}
-            className={cn(
-              "cursor-pointer transition-all",
-              selected === t.id && "ring-1 ring-flux/40"
-            )}
-          >
-            <CardContent className="flex items-start gap-4 p-5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-copper/20 to-flux/20">
-                <FileText className="h-5 w-5 text-flux-light" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-slate-100">{t.name}</p>
-                <p className="mt-1 text-sm text-slate-400">{t.description}</p>
-                <p className="mt-2 text-xs text-slate-600">Last run: {t.lastRun}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+    <div className="p-8 max-w-5xl mx-auto text-slate-100">
+      <div className="mb-6 border-b border-slate-800 pb-4">
+        <h1 className="text-2xl font-bold text-white">Compliance & Audit Reports</h1>
+        <p className="text-sm text-slate-400 mt-1">
+          Automated in-memory PDF compliance audit generator backed by ReportLab.
+        </p>
       </div>
 
-      <Card className="h-fit xl:sticky xl:top-20">
-        <CardHeader>
-          <CardTitle>Generate Report</CardTitle>
-          <CardDescription>
-            {reportTemplates.find((t) => t.id === selected)?.name}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 pt-2">
-          <div>
-            <label className="mb-1.5 block text-xs uppercase tracking-wider text-slate-500">
-              Date range
-            </label>
-            <select className="w-full rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-slate-200 outline-none focus:border-flux/40">
-              <option>Last 7 days</option>
-              <option>Last 30 days</option>
-              <option>This quarter</option>
-              <option>Custom range</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs uppercase tracking-wider text-slate-500">
-              Output format
-            </label>
-            <div className="flex gap-2">
-              {["PDF", "DOCX", "Markdown"].map((f) => (
-                <button
-                  key={f}
-                  className="flex-1 rounded-lg border border-white/10 bg-white/[0.02] py-2 text-xs text-slate-300 hover:border-flux/40 hover:text-flux-light"
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
-          </div>
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
+        <h2 className="text-lg font-semibold text-white mb-2">Executive Safety & OISD Audit Summary</h2>
+        <p className="text-sm text-slate-400 mb-6">
+          Generates a verified, tamper-evident regulatory report compiling all flagged pressure limits,
+          unverified operational procedures, and vector retrieval stats for statutory inspectors.
+        </p>
 
-          <Button onClick={generate} disabled={generating} className="w-full">
-            {generating ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Drafting with Qwen3…
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4" /> Generate Report
-              </>
-            )}
-          </Button>
-
-          {done && (
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center justify-between rounded-lg border border-alert-green/20 bg-alert-green/5 px-3 py-2.5"
-            >
-              <span className="text-xs text-alert-green">Report ready — 4 pages</span>
-              <button className="flex items-center gap-1 text-xs text-flux-light hover:underline">
-                <Download className="h-3.5 w-3.5" /> Download
-              </button>
-            </motion.div>
-          )}
-        </CardContent>
-      </Card>
+        <button
+          onClick={handleDownload}
+          disabled={downloading}
+          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white font-medium rounded-lg shadow transition-colors flex items-center gap-2"
+        >
+          {downloading ? "Generating Live PDF..." : "Download Live PDF Compliance Report"}
+        </button>
+      </div>
     </div>
   );
 }
