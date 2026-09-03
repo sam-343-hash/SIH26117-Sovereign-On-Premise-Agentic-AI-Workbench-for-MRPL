@@ -1,206 +1,148 @@
 "use client";
+import React, { useState } from "react";
+import Sidebar from "@/components/sidebar";
 
-import { motion } from "framer-motion";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
-import { ArrowUpRight, ArrowDownRight, CheckCircle2, Circle, Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  kpis,
-  ingestTrend,
-  riskBreakdown,
-  pipelineStages,
-  recentActivity,
-} from "@/lib/mock-data";
+export default function WorkspacePage() {
+  const [query, setQuery] = useState("");
+  const [messages, setMessages] = useState<Array<{ role: string; text: string; citations?: string[] }>>([
+    {
+      role: "assistant",
+      text: "RefinaAI Sovereign Refinery Assistant active. All queries grounded against on-premise OISD and refinery standard operating procedures.",
+    },
+  ]);
+  const [loading, setLoading] = useState(false);
 
-const container = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.06 } },
-};
-const item = {
-  hidden: { opacity: 0, y: 10 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.35 } },
-};
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!query.trim() || loading) return;
 
-export default function DashboardPage() {
+    const userText = query.trim();
+    setQuery("");
+    setMessages((prev) => [...prev, { role: "user", text: userText }]);
+    setLoading(true);
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/rag/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({ query: userText, limit: 3 }),
+      });
+
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        throw new Error(`Server returned non-JSON response (${res.status}): ${rawText.slice(0, 100)}`);
+      }
+
+      if (!res.ok) {
+        throw new Error(data.detail || `Server error: HTTP ${res.status}`);
+      }
+
+      let responseText = "No relevant context found in local refinery documents.";
+      let citations: string[] = [];
+
+      if (data.answer) {
+        responseText = data.answer;
+      } else if (Array.isArray(data.matches) && data.matches.length > 0) {
+        responseText = data.matches.map((m: any) => m.text || m.content).join("\n\n");
+        citations = data.matches.map((m: any) => `${m.filename || 'SOP-MRPL'} (p. ${m.page || 1})`);
+      } else if (typeof data === "string") {
+        responseText = data;
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: responseText, citations: citations },
+      ]);
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: `Backend Error: ${err.message}`,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
-      {/* KPI row */}
-      <motion.div variants={item} className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {kpis.map((k) => (
-          <Card key={k.label} className="relative overflow-hidden">
-            <CardContent className="p-5">
-              <p className="text-xs text-slate-400">{k.label}</p>
-              <div className="mt-2 flex items-end justify-between">
-                <p className="font-display text-2xl font-semibold text-white">{k.value}</p>
-                <span
-                  className={`flex items-center gap-0.5 text-xs font-medium ${
-                    k.trend === "up" ? "text-alert-green" : "text-flux-light"
-                  }`}
-                >
-                  {k.trend === "up" ? (
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  ) : (
-                    <ArrowDownRight className="h-3.5 w-3.5" />
-                  )}
-                  {k.delta}
-                </span>
-              </div>
-            </CardContent>
-            <div className="pipe-rule absolute bottom-0 left-0 right-0" />
-          </Card>
-        ))}
-      </motion.div>
+    <div className="flex h-screen bg-[#090d16] text-slate-100 overflow-hidden font-sans">
+      <Sidebar />
+      <main className="flex-1 flex flex-col h-full bg-[#0d1322]/80 backdrop-blur-md">
+        <header className="px-8 py-4 border-b border-slate-800/80 flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold text-white tracking-wide">RefinaAI Workspace</h1>
+            <p className="text-xs text-slate-400">Air-gapped on-premise execution (127.0.0.1:8000)</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="text-xs text-emerald-400 font-mono">SOVEREIGN CORE ONLINE</span>
+          </div>
+        </header>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {/* Ingest / query trend */}
-        <motion.div variants={item} className="xl:col-span-2">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle>Ingestion &amp; Query Volume</CardTitle>
-              <CardDescription>Documents processed vs. queries answered, last 7 days</CardDescription>
-            </CardHeader>
-            <CardContent className="h-72 pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={ingestTrend} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="docsGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#e0883f" stopOpacity={0.5} />
-                      <stop offset="100%" stopColor="#e0883f" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="queriesGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#3fd8c4" stopOpacity={0.5} />
-                      <stop offset="100%" stopColor="#3fd8c4" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="day" stroke="#5b6478" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#5b6478" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      background: "rgba(14,19,27,0.95)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: 10,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Area type="monotone" dataKey="queries" stroke="#3fd8c4" fill="url(#queriesGrad)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="docs" stroke="#e0883f" fill="url(#docsGrad)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* Risk breakdown */}
-        <motion.div variants={item}>
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle>Compliance Risk Split</CardTitle>
-              <CardDescription>Across all indexed documents</CardDescription>
-            </CardHeader>
-            <CardContent className="flex h-72 flex-col items-center justify-center pt-2">
-              <ResponsiveContainer width="100%" height="70%">
-                <PieChart>
-                  <Pie
-                    data={riskBreakdown}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={55}
-                    outerRadius={80}
-                    paddingAngle={3}
-                  >
-                    {riskBreakdown.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} stroke="none" />
+        <div className="flex-1 overflow-y-auto p-8 space-y-6">
+          {messages.map((m, i) => (
+            <div
+              key={i}
+              className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}
+            >
+              <div
+                className={`max-w-2xl px-5 py-3.5 rounded-xl text-sm leading-relaxed ${
+                  m.role === "user"
+                    ? "bg-amber-600/90 text-white font-medium shadow-md shadow-amber-900/20"
+                    : "bg-slate-900/90 border border-slate-800 text-slate-200 shadow-lg"
+                }`}
+              >
+                <div className="whitespace-pre-wrap">{m.text}</div>
+                {m.citations && m.citations.length > 0 && (
+                  <div className="mt-3 pt-2.5 border-t border-slate-800 flex flex-wrap gap-1.5">
+                    {m.citations.map((c, ci) => (
+                      <span
+                        key={ci}
+                        className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-950/60 text-blue-300 border border-blue-800/40"
+                      >
+                        📄 {c}
+                      </span>
                     ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      background: "rgba(14,19,27,0.95)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      borderRadius: 10,
-                      fontSize: 12,
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="flex gap-4">
-                {riskBreakdown.map((r) => (
-                  <div key={r.name} className="flex items-center gap-1.5 text-xs text-slate-400">
-                    <span className="h-2 w-2 rounded-full" style={{ background: r.color }} />
-                    {r.name}
                   </div>
-                ))}
+                )}
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
+              Consulting local ChromaDB & Qwen 2.5...
+            </div>
+          )}
+        </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {/* Pipeline status - refinery motif */}
-        <motion.div variants={item} className="xl:col-span-1">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle>Refinement Pipeline</CardTitle>
-              <CardDescription>Live document processing stages</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-2">
-              {pipelineStages.map((s, i) => (
-                <div key={s.stage} className="flex items-center gap-3">
-                  {s.status === "complete" && <CheckCircle2 className="h-[18px] w-[18px] text-alert-green" />}
-                  {s.status === "active" && <Loader2 className="h-[18px] w-[18px] animate-spin text-flux" />}
-                  {s.status === "pending" && <Circle className="h-[18px] w-[18px] text-slate-600" />}
-                  <span
-                    className={`text-sm ${
-                      s.status === "pending" ? "text-slate-500" : "text-slate-200"
-                    }`}
-                  >
-                    {s.stage}
-                  </span>
-                  {i < pipelineStages.length - 1 && (
-                    <div className="ml-auto h-px flex-1 max-w-[40px] bg-white/10" />
-                  )}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* Recent activity */}
-        <motion.div variants={item} className="xl:col-span-2">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>Across all workspaces</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-1 pt-2">
-              {recentActivity.map((a) => (
-                <div
-                  key={a.id}
-                  className="flex items-center justify-between rounded-lg px-2 py-2.5 text-sm hover:bg-white/[0.03]"
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="font-medium text-slate-200">{a.actor}</span>
-                    <span className="text-slate-500">{a.action}</span>
-                    <span className="truncate text-slate-400">{a.target}</span>
-                  </div>
-                  <span className="ml-3 shrink-0 text-xs text-slate-600">{a.time}</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
-    </motion.div>
+        <form onSubmit={handleSend} className="p-6 border-t border-slate-800/80 bg-slate-950/40">
+          <div className="flex gap-3 max-w-4xl mx-auto">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Ask about a procedure, operating limit, or safety envelope..."
+              className="flex-1 bg-slate-900 border border-slate-700/80 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-colors shadow-md"
+            >
+              {loading ? "Searching..." : "Query"}
+            </button>
+          </div>
+        </form>
+      </main>
+    </div>
   );
 }
