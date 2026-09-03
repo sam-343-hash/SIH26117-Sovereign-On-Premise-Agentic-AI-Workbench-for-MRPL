@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from "react";
-import Sidebar from "@/components/sidebar";
+// Sidebar managed by root layout
 
 export default function WorkspacePage() {
   const [query, setQuery] = useState("");
@@ -75,7 +75,7 @@ export default function WorkspacePage() {
 
   return (
     <div className="flex h-screen bg-[#090d16] text-slate-100 overflow-hidden font-sans">
-      <Sidebar />
+      
       <main className="flex-1 flex flex-col h-full bg-[#0d1322]/80 backdrop-blur-md">
         <header className="px-8 py-4 border-b border-slate-800/80 flex items-center justify-between">
           <div>
