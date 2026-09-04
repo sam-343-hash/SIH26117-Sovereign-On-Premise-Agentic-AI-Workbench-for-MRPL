@@ -124,7 +124,7 @@ export default function ChatPage() {
     },
   ]);
 }
-
+  };
 
   return (
     <div className="flex h-[calc(100vh-7rem)] gap-4">
