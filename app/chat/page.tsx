@@ -45,54 +45,86 @@ export default function ChatPage() {
     setThinking(true);
 
     try {
-      const response = await fetch(`/api/backend-proxy?path=/api/chat/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: question, thread_id: activeThread }),
-      });
+  const response = await fetch("/api/backend-proxy?path=/api/chat/message", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: question, role: "admin" }),
+  });
 
-      if (!response.ok) {
-        throw new Error(`Chat API returned ${response.status}`);
+  if (!response.ok) {
+    throw new Error(`Chat API returned ${response.status}`);
+  }
+
+  if (!response.body) {
+    throw new Error("Response body is null");
+  }
+
+  const assistantId = crypto.randomUUID();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let accumulatedContent = "";
+  let extractedCitations: Array<{ label: string; page?: number }> = [];
+
+  // Seed assistant placeholder
+  setMessages((prev) => [
+    ...prev,
+    {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      citations: [],
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    },
+  ]);
+  setThinking(false);
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value, { stream: true });
+    const lines = chunk.split("\n");
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        const jsonStr = line.slice(6).trim();
+        if (!jsonStr) continue;
+        try {
+          const payload = JSON.parse(jsonStr);
+
+          if (payload.citations) {
+            extractedCitations = payload.citations;
+          }
+          if (payload.content) {
+            accumulatedContent += payload.content;
+          }
+
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantId
+                ? { ...msg, content: accumulatedContent, citations: extractedCitations }
+                : msg
+            )
+          );
+        } catch {
+          // Ignore partial SSE split lines across read chunks
+        }
       }
-
-      const data = (await response.json()) as ChatApiResponse;
-      const assistantId = crypto.randomUUID();
-      const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-      setThinking(false);
-      setMessages((m) => [
-        ...m,
-        {
-          id: assistantId,
-          role: "assistant",
-          content: "",
-          citations: data.citations.map((citation) => ({
-            label: citation.label,
-            page: citation.page ?? undefined,
-          })),
-          timestamp,
-        },
-      ]);
-
-      for (let index = 0; index <= data.content.length; index += 3) {
-        const content = data.content.slice(0, index);
-        setMessages((m) => m.map((msg) => (msg.id === assistantId ? { ...msg, content } : msg)));
-        await sleep(12);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown chat error";
-      setThinking(false);
-      setMessages((m) => [
-        ...m,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: `I could not reach the RefinaAI backend yet. Check that FastAPI is running on http://127.0.0.1:8000. Detail: ${message}`,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        },
-      ]);
     }
   }
+} catch (error: any) {
+  setThinking(false);
+  setMessages((prev) => [
+    ...prev,
+    {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: `I could not reach the RefinaAI backend yet. Detail: ${error.message}`,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    },
+  ]);
+}
+
 
   return (
     <div className="flex h-[calc(100vh-7rem)] gap-4">
