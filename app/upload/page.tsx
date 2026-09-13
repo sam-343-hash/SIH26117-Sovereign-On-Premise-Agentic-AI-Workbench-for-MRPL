@@ -11,12 +11,11 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type BackendDocument = {
   id: number;
-  name: string;
-  doc_type: DocRow["type"];
-  pages: number;
-  size_label: string;
+  filename: string;
+  file_size_bytes: number;
+  total_pages: number;
   status: DocRow["status"];
-  uploaded_at: string;
+  created_at: string;
 };
 
 const statusMap: Record<DocRow["status"], { icon: React.ElementType; variant: any }> = {
@@ -41,7 +40,7 @@ export default function UploadPage() {
 
   const loadDocuments = React.useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/api/documents/`);
+      const response = await fetch(`${API_URL}/api/documents`);
       if (!response.ok) throw new Error(`Document API returned ${response.status}`);
       const rows = (await response.json()) as BackendDocument[];
       setDocuments(rows.map(toDocRow));
@@ -196,13 +195,18 @@ export default function UploadPage() {
 function toDocRow(document: BackendDocument): DocRow {
   return {
     id: String(document.id),
-    name: document.name,
-    type: document.doc_type,
-    pages: document.pages,
-    size: document.size_label,
+    name: document.filename,
+    type: document.filename.toLowerCase().endsWith(".docx") ? "DOCX" : "PDF",
+    pages: document.total_pages,
+    size: formatFileSize(document.file_size_bytes),
     status: document.status,
-    uploaded: formatRelativeTime(document.uploaded_at),
+    uploaded: formatRelativeTime(document.created_at),
   };
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function formatRelativeTime(value: string) {

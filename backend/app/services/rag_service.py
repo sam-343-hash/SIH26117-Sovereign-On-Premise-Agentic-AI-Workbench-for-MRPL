@@ -23,11 +23,18 @@ async def get_embeddings(texts: list[str]) -> list[list[float]]:
     embeddings = []
     async with httpx.AsyncClient(timeout=30.0) as client:
         for text in texts:
-            resp = await client.post(
-                f"{OLLAMA_BASE_URL}/api/embeddings",
-                json={"model": EMBED_MODEL, "prompt": text}
-            )
-            embeddings.append(resp.json()["embedding"])
+            try:
+                resp = await client.post(
+                    f"{OLLAMA_BASE_URL}/api/embeddings",
+                    json={"model": EMBED_MODEL, "prompt": text}
+                )
+                resp.raise_for_status()
+                embeddings.append(resp.json()["embedding"])
+            except (httpx.HTTPError, KeyError, ValueError) as exc:
+                raise RuntimeError(
+                    f"Ollama embedding request failed. Ensure {EMBED_MODEL!r} is available "
+                    f"at {OLLAMA_BASE_URL}."
+                ) from exc
     return embeddings
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> list[str]:
@@ -106,8 +113,14 @@ async def process_document_pipeline(document_id: int, file_path: str):
         print(f"[INGESTION ERROR] Doc {document_id}: {e}")
 
 async def query_rag(query: str, n_results: int = 4) -> list[dict]:
+    document_count = collection.count()
+    if document_count == 0:
+        return []
+
     query_vec = (await get_embeddings([query]))[0]
-    results = collection.query(query_embeddings=[query_vec], n_results=n_results)
+    results = collection.query(
+        query_embeddings=[query_vec], n_results=min(max(n_results, 1), document_count)
+    )
     hits = []
     if results and results.get("metadatas"):
         for meta in results["metadatas"][0]:
