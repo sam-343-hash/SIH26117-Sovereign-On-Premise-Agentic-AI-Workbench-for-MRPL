@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
-from app.routers import chat, documents, rag, safety, reports, admin
+from app.routers import chat, documents, rag, safety, graph, reports, admin
 
 app = FastAPI(title="RefinaAI API", version="0.1.0")
 
@@ -34,9 +34,12 @@ def health():
     return {"status": "ok", "service": "refinaai-backend"}
 
 
-app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
-app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
-app.include_router(rag.router, prefix="/api/rag", tags=["rag"])
-app.include_router(safety.router, prefix="/api/safety", tags=["safety"])
-app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
-app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+# Router modules own their /api/... prefixes. Adding them here would produce
+# routes such as /api/chat/api/chat/message.
+app.include_router(chat.router)
+app.include_router(documents.router)
+app.include_router(rag.router)
+app.include_router(safety.router)
+app.include_router(graph.router)
+app.include_router(reports.router)
+app.include_router(admin.router)
