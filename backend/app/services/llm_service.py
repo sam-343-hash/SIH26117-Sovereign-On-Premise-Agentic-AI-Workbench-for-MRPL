@@ -4,7 +4,7 @@ import httpx
 from typing import AsyncGenerator
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-CHAT_MODEL = os.getenv("CHAT_MODEL", "qwen2.5:7b-instruct-q4_K_M")
+CHAT_MODEL = os.getenv("CHAT_MODEL", "qwen2.5:latest")
 
 async def stream_chat_completion(prompt: str, context_chunks: list[dict]) -> AsyncGenerator[str, None]:
     system_instruction = (

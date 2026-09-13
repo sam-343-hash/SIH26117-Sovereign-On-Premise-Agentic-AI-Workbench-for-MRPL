@@ -10,7 +10,7 @@ from app.services.safety_service import evaluate_safety_rules
 from app.services.graph_service import extract_knowledge_graph
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text:latest")
 CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
 
 chroma_client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)

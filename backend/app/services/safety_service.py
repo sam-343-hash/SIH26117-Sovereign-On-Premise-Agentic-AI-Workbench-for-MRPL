@@ -7,7 +7,7 @@ from app.database import engine
 from app.models.safety import SafetyFlagRow
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-SAFETY_MODEL = os.getenv("CHAT_MODEL", "qwen2.5:7b-instruct-q4_K_M")
+SAFETY_MODEL = os.getenv("CHAT_MODEL", "qwen2.5:latest")
 
 class SafetyReportItem(BaseModel):
     has_violation: bool

@@ -6,7 +6,7 @@ from app.database import engine
 from app.models.graph import GraphNode, GraphEdge
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-GRAPH_MODEL = os.getenv("CHAT_MODEL", "qwen2.5:7b-instruct-q4_K_M")
+GRAPH_MODEL = os.getenv("CHAT_MODEL", "qwen2.5:latest")
 
 GRAPH_PROMPT = """Extract up to 4 key entities and their operational relationships from this text.
 Allowed Categories: "EQUIPMENT", "CHEMICAL", "SAFETY_RULE", "METRIC".
