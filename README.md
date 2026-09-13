@@ -13,6 +13,39 @@ This package contains a **working MVP**:
   can build them incrementally over the remaining days without re-architecting
   anything.
 
+## Quick local run and offline operation
+
+After the one-time dependency and model downloads, the application runs entirely
+on the local machine: Next.js calls `localhost`, FastAPI uses local SQLite and
+persistent ChromaDB, and inference/embeddings are served by local Ollama. The
+application does not call OpenAI or any third-party API at runtime.
+
+One-time setup requires internet access for `npm ci`, `pip install`, and the
+two Ollama model downloads. Run these once:
+
+```bash
+ollama pull qwen2.5:latest
+ollama pull nomic-embed-text:latest
+```
+
+Then launch the stack:
+
+```powershell
+# Windows PowerShell
+.\run-local.ps1
+```
+
+```bash
+# macOS or Linux
+chmod +x run-local.sh
+./run-local.sh
+```
+
+Open `http://localhost:3000`; Swagger is at `http://localhost:8000/docs`.
+Use `-SkipInstall` on Windows or `--skip-install` on macOS/Linux when the
+dependencies are already installed. The scripts refuse to start if a required
+local Ollama model is missing, rather than silently using an internet service.
+
 ---
 
 ## 1. Project layout
