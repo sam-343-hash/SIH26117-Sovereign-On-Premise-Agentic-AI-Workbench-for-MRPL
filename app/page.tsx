@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import {
   AreaChart,
   Area,
@@ -15,13 +16,8 @@ import {
 import { ArrowUpRight, ArrowDownRight, CheckCircle2, Circle, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  kpis,
-  ingestTrend,
-  riskBreakdown,
-  pipelineStages,
-  recentActivity,
-} from "@/lib/mock-data";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+type Summary = { documents_total:number; documents_indexed:number; documents_processing:number; safety_flags_total:number; critical_flags:number; graph_nodes:number; graph_edges:number; trend:{day:string;documents:number}[]; risk_split:{name:string;value:number;color:string}[]; activity:{id:string;actor:string;action:string;target:string;time:string}[] };
 
 const container = {
   hidden: {},
@@ -33,6 +29,24 @@ const item = {
 };
 
 export default function DashboardPage() {
+  const [summary, setSummary] = useState<Summary | null>(null);
+  useEffect(() => { fetch(`${API_BASE}/api/dashboard/summary`).then(r => r.ok ? r.json() : Promise.reject()).then(setSummary).catch(() => setSummary(null)); }, []);
+  const kpis = summary ? [
+    { label: "Documents Indexed", value: String(summary.documents_indexed), delta: `${summary.documents_total} total`, trend: "up" },
+    { label: "Processing", value: String(summary.documents_processing), delta: "live intake", trend: "up" },
+    { label: "Safety Findings", value: String(summary.safety_flags_total), delta: `${summary.critical_flags} critical`, trend: "up" },
+    { label: "Knowledge Graph", value: String(summary.graph_nodes), delta: `${summary.graph_edges} relationships`, trend: "up" },
+  ] : [];
+  const ingestTrend = summary?.trend || [];
+  const riskBreakdown = summary?.risk_split.filter(item => item.value > 0) || [];
+  const pipelineStages = [
+    { stage: "Ingest", status: summary?.documents_total ? "complete" : "pending" },
+    { stage: "Chunk + Embed", status: summary?.documents_indexed ? "complete" : "pending" },
+    { stage: "Vector Index", status: summary?.documents_indexed ? "complete" : "pending" },
+    { stage: "Safety Scan", status: summary?.safety_flags_total ? "complete" : "pending" },
+    { stage: "Graph Link", status: summary?.graph_edges ? "complete" : "pending" },
+  ];
+  const recentActivity = summary?.activity || [];
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
       {/* KPI row */}
@@ -93,8 +107,7 @@ export default function DashboardPage() {
                       fontSize: 12,
                     }}
                   />
-                  <Area type="monotone" dataKey="queries" stroke="#3fd8c4" fill="url(#queriesGrad)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="docs" stroke="#e0883f" fill="url(#docsGrad)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="documents" name="Documents" stroke="#e0883f" fill="url(#docsGrad)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </CardContent>
@@ -194,9 +207,10 @@ export default function DashboardPage() {
                     <span className="text-slate-500">{a.action}</span>
                     <span className="truncate text-slate-400">{a.target}</span>
                   </div>
-                  <span className="ml-3 shrink-0 text-xs text-slate-600">{a.time}</span>
+                  <span className="ml-3 shrink-0 text-xs text-slate-600">{new Date(a.time).toLocaleString()}</span>
                 </div>
               ))}
+              {!summary && <p className="px-2 py-3 text-sm text-slate-500">Loading live local data…</p>}
             </CardContent>
           </Card>
         </motion.div>

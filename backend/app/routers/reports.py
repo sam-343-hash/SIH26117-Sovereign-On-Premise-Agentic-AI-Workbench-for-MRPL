@@ -1,6 +1,10 @@
 import io
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlmodel import Session, select
+from app.database import get_session
+from app.models.document import Document
+from app.models.safety import SafetyFlagRow
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -9,7 +13,9 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 router = APIRouter(tags=["Reports"])
 
 @router.get("/download")
-async def generate_live_pdf_report():
+async def generate_live_pdf_report(session: Session = Depends(get_session)):
+    documents = list(session.exec(select(Document)).all())
+    flags = list(session.exec(select(SafetyFlagRow).order_by(SafetyFlagRow.created_at.desc())).all())
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
     styles = getSampleStyleSheet()
@@ -21,9 +27,9 @@ async def generate_live_pdf_report():
     ]
     summary_data = [
         ["Metric", "Observed Value", "Compliance Status"],
-        ["Total SOPs Indexed", "12 Manuals", "Indexed (ChromaDB)"],
+        ["Documents Indexed", str(sum(doc.status == "Indexed" for doc in documents)), "Local ChromaDB"],
         ["Safety Rules Enforced", "OISD-106 / OSHA 1910", "Active"],
-        ["Critical Hazards Flagged", "1 Violation (CDU-01 Pressure)", "Requires Action"],
+        ["Safety Findings", str(len(flags)), "Review required" if flags else "No findings"],
         ["Air-Gap Security", "Local Offline Weights", "Verified"]
     ]
     t1 = Table(summary_data, colWidths=[180, 180, 140])
@@ -39,13 +45,12 @@ async def generate_live_pdf_report():
     story.append(t1)
     story.append(Spacer(1, 16))
     story.append(Paragraph("<b>Automated Hazard Detections</b>", styles['Heading2']))
-    story.append(Paragraph(
-        "<b>[CRITICAL] CDU-01 Distillation Column Overhead Pressure Exceedance</b><br/>"
-        "• <b>Observed Value:</b> 3.85 bar (SOP-IOCL-CDU-2026-08)<br/>"
-        "• <b>Standard Limit:</b> 3.50 bar (OISD-106 Mandate)<br/>"
-        "• <b>Remediation:</b> Immediately throttle pre-heater H-101 fuel gas control valve and inspect PRV-104 calibration.",
-        styles['Normal']
-    ))
+    if flags:
+        for flag in flags[:10]:
+            story.append(Paragraph(f"<b>[{flag.severity}] {flag.rule_id}</b><br/>Observed: {flag.observed_value} | Limit: {flag.standard_limit}<br/>Recommendation: {flag.recommendation}", styles['Normal']))
+            story.append(Spacer(1, 8))
+    else:
+        story.append(Paragraph("No safety findings have been generated from the locally indexed documents.", styles['Normal']))
     try:
         doc.build(story)
     except Exception as exc:

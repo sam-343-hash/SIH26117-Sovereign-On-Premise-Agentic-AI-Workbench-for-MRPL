@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import app.config  # Load backend/.env before services read configuration.
 from app.database import init_db
-from app.routers import admin, chat, documents, graph, rag, reports, safety
+from app.routers import admin, chat, dashboard, documents, graph, rag, reports, safety
 
 app = FastAPI(title="RefinaAI API", version="0.1.0")
 
@@ -44,3 +44,4 @@ app.include_router(safety.router, prefix="/api/safety", tags=["safety"])
 app.include_router(graph.router, prefix="/api/graph", tags=["knowledge graph"])
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
