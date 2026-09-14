@@ -2,27 +2,17 @@
 import React, { useState } from "react";
 
 export default function ReportsPage() {
-  const [downloading, setDownloading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const reportUrl = (inline = false) => {
+    const path = inline ? "/api/reports/download?inline=true" : "/api/reports/download";
+    return `/api/backend-proxy?path=${encodeURIComponent(path)}`;
+  };
 
-  const handleDownload = async () => {
-    setDownloading(true);
-    try {
-      const response = await fetch("/api/backend-proxy?path=/api/reports/download");
-      if (!response.ok) throw new Error(`Report API returned ${response.status}`);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "RefinaAI_Compliance_Report.pdf";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch (e) {
-      const detail = e instanceof Error ? e.message : "Unknown error";
-      alert(`Report generation failed: ${detail}`);
-    } finally {
-      setDownloading(false);
-    }
+  const handleDownload = () => {
+    setMessage("Generating and downloading the live local PDF…");
+    // Let the browser process the server PDF directly; this avoids unreliable
+    // object-URL/Blob PDF rendering in some Windows Chrome installations.
+    window.location.assign(reportUrl());
   };
 
   return (
@@ -43,11 +33,17 @@ export default function ReportsPage() {
 
         <button
           onClick={handleDownload}
-          disabled={downloading}
-          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white font-medium rounded-lg shadow transition-colors flex items-center gap-2"
+          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg shadow transition-colors flex items-center gap-2"
         >
-          {downloading ? "Generating Live PDF..." : "Download Live PDF Compliance Report"}
+          Download Live PDF Compliance Report
         </button>
+        <button
+          onClick={() => window.open(reportUrl(true), "_blank", "noopener")}
+          className="ml-3 px-5 py-2.5 border border-slate-600 hover:border-slate-400 text-slate-200 font-medium rounded-lg transition-colors"
+        >
+          Open PDF Preview
+        </button>
+        {message && <p className="mt-3 text-sm text-slate-400">{message}</p>}
       </div>
     </div>
   );

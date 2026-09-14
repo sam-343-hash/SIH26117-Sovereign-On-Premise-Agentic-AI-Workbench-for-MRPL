@@ -1,64 +1,51 @@
 import io
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfgen import canvas
 from sqlmodel import Session, select
 from app.database import get_session
 from app.models.document import Document
 from app.models.safety import SafetyFlagRow
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 router = APIRouter(tags=["Reports"])
+
+def draw_wrapped(pdf, text, x, y, width, size=10):
+    words = text.encode("ascii", "replace").decode("ascii").split()
+    line = ""
+    for word in words:
+        candidate = f"{line} {word}".strip()
+        if line and stringWidth(candidate, "Helvetica", size) > width:
+            pdf.drawString(x, y, line); y -= size + 4; line = word
+        else: line = candidate
+    if line: pdf.drawString(x, y, line); y -= size + 4
+    return y
 
 @router.get("/download")
 async def generate_live_pdf_report(inline: bool = Query(False), session: Session = Depends(get_session)):
     documents = list(session.exec(select(Document)).all())
     flags = list(session.exec(select(SafetyFlagRow).order_by(SafetyFlagRow.created_at.desc())).all())
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=18, textColor=colors.HexColor('#0F172A'), spaceAfter=12)
-    story = [
-        Paragraph("RefinaAI Sovereign Refinery Intelligence Audit", title_style),
-        Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC | Site: MRPL Complex", styles['Normal']),
-        Spacer(1, 12)
-    ]
-    summary_data = [
-        ["Metric", "Observed Value", "Compliance Status"],
-        ["Documents Indexed", str(sum(doc.status == "Indexed" for doc in documents)), "Local ChromaDB"],
-        ["Safety Rules Enforced", "OISD-106 / OSHA 1910", "Active"],
-        ["Safety Findings", str(len(flags)), "Review required" if flags else "No findings"],
-        ["Air-Gap Security", "Local Offline Weights", "Verified"]
-    ]
-    t1 = Table(summary_data, colWidths=[180, 180, 140])
-    t1.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1E293B')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
-        ('BACKGROUND', (0, 3), (-1, 3), colors.HexColor('#FEE2E2')),
-        ('TEXTCOLOR', (0, 3), (-1, 3), colors.HexColor('#991B1B')),
-    ]))
-    story.append(t1)
-    story.append(Spacer(1, 16))
-    story.append(Paragraph("<b>Automated Hazard Detections</b>", styles['Heading2']))
-    if flags:
-        for flag in flags[:10]:
-            story.append(Paragraph(f"<b>[{flag.severity}] {flag.rule_id}</b><br/>Observed: {flag.observed_value} | Limit: {flag.standard_limit}<br/>Recommendation: {flag.recommendation}", styles['Normal']))
-            story.append(Spacer(1, 8))
-    else:
-        story.append(Paragraph("No safety findings have been generated from the locally indexed documents.", styles['Normal']))
-    try:
-        doc.build(story)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail="Report generation failed. Check backend logs for details.") from exc
-    pdf_bytes = buffer.getvalue()
-    buffer.close()
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"{'inline' if inline else 'attachment'}; filename=RefinaAI_Compliance_Report_{datetime.now().strftime('%Y%m%d')}.pdf"}
-    )
+    buffer = io.BytesIO(); pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
+    width, height = A4; y = height - 48
+    pdf.setFillColorRGB(.06,.12,.20); pdf.setFont("Helvetica-Bold", 18); pdf.drawString(42, y, "RefinaAI Local Compliance Report")
+    y -= 24; pdf.setFillColorRGB(.2,.2,.2); pdf.setFont("Helvetica", 9); pdf.drawString(42, y, f"Generated locally: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    y -= 30; pdf.setFillColorRGB(.06,.12,.20); pdf.setFont("Helvetica-Bold", 11); pdf.drawString(42, y, "Live Local Summary"); y -= 18
+    summary = [("Documents indexed", str(sum(doc.status == "Indexed" for doc in documents))), ("Safety findings", str(len(flags))), ("Local AI", "Ollama + ChromaDB"), ("Mode", "Local/offline after setup")]
+    for label, value in summary:
+        pdf.setFillColorRGB(.12,.15,.2); pdf.rect(42, y - 4, width - 84, 18, fill=1, stroke=0)
+        pdf.setFillColorRGB(1,1,1); pdf.setFont("Helvetica-Bold", 9); pdf.drawString(50, y + 2, label); pdf.setFont("Helvetica", 9); pdf.drawRightString(width - 50, y + 2, value); y -= 23
+    y -= 8; pdf.setFillColorRGB(.06,.12,.20); pdf.setFont("Helvetica-Bold", 11); pdf.drawString(42, y, "Safety Findings"); y -= 18
+    if not flags:
+        pdf.setFillColorRGB(.2,.2,.2); pdf.setFont("Helvetica", 10); pdf.drawString(42, y, "No safety findings have been generated from locally indexed documents.")
+    for flag in flags[:8]:
+        if y < 100: pdf.showPage(); y = height - 48
+        pdf.setFillColorRGB(.55,.05,.05); pdf.setFont("Helvetica-Bold", 10); pdf.drawString(42, y, f"[{flag.severity}] {flag.rule_id}"); y -= 15
+        pdf.setFillColorRGB(.15,.15,.15); pdf.setFont("Helvetica", 9)
+        y = draw_wrapped(pdf, f"Observed: {flag.observed_value} | Limit: {flag.standard_limit}", 42, y, int(width - 84), 9)
+        y = draw_wrapped(pdf, f"Recommendation: {flag.recommendation}", 42, y, int(width - 84), 9); y -= 10
+    pdf.setFont("Helvetica", 8); pdf.setFillColorRGB(.35,.35,.35); pdf.drawString(42, 28, "Demo report: verify safety-critical guidance against approved site procedures.")
+    pdf.save(); data = buffer.getvalue(); buffer.close()
+    if not data.startswith(b"%PDF"): raise HTTPException(status_code=500, detail="Report generation produced an invalid PDF.")
+    disposition = "inline" if inline else "attachment"
+    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": f"{disposition}; filename=RefinaAI_Compliance_Report_{datetime.now().strftime('%Y%m%d')}.pdf"})
