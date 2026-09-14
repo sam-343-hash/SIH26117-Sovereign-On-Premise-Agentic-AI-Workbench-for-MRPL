@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from app.services.rag_service import query_rag
 
@@ -10,5 +10,10 @@ class SearchRequest(BaseModel):
 
 @router.post("/search")
 async def execute_rag_search(req: SearchRequest):
-    results = await query_rag(req.query, n_results=req.limit)
+    if not req.query.strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Search query cannot be empty.")
+    try:
+        results = await query_rag(req.query, n_results=req.limit)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     return {"query": req.query, "matches": results}

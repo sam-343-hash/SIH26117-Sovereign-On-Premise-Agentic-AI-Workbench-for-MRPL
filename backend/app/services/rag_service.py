@@ -16,7 +16,10 @@ CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
 chroma_client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
 collection = chroma_client.get_or_create_collection(
     name="refinery_docs",
-    metadata={"hnsw:space": "cosine"}
+    metadata={"hnsw:space": "cosine"},
+    # Vectors are supplied explicitly from Ollama for both add and query.
+    # Disabling Chroma's default avoids an unnecessary ONNX MiniLM download.
+    embedding_function=None,
 )
 
 async def get_embeddings(texts: list[str]) -> list[list[float]]:

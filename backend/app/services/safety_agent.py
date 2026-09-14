@@ -9,8 +9,8 @@ from langchain_core.prompts import PromptTemplate
 from app.models.document import Document
 from app.models.safety_flag import SafetyFlagRow
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "qwen3:14b")
+OLLAMA_HOST = os.getenv("OLLAMA_BASE_URL", os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"))
+OLLAMA_CHAT_MODEL = os.getenv("CHAT_MODEL", os.getenv("OLLAMA_CHAT_MODEL", "qwen2.5:latest"))
 
 SAFETY_RULES = [
     {

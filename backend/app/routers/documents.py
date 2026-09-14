@@ -17,10 +17,11 @@ async def upload_document(
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session)
 ):
-    if not file.filename.lower().endswith((".pdf", ".docx", ".txt")):
+    filename = Path(file.filename or "").name
+    if not filename or not filename.lower().endswith((".pdf", ".docx", ".txt")):
         raise HTTPException(status_code=400, detail="Unsupported format.")
 
-    file_path = UPLOAD_DIR / file.filename
+    file_path = UPLOAD_DIR / filename
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
@@ -29,7 +30,7 @@ async def upload_document(
         raise HTTPException(status_code=400, detail="File exceeds 15MB.")
 
     doc = Document(
-        filename=file.filename,
+        filename=filename,
         file_path=str(file_path),
         file_size_bytes=file_path.stat().st_size,
         status="Processing"
