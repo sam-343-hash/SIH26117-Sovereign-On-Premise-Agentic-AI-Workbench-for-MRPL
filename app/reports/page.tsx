@@ -3,16 +3,16 @@ import React, { useState } from "react";
 
 export default function ReportsPage() {
   const [message, setMessage] = useState<string | null>(null);
-  const reportUrl = (inline = false) => {
-    const path = inline ? "/api/reports/download?inline=true" : "/api/reports/download";
-    return `/api/backend-proxy?path=${encodeURIComponent(path)}`;
-  };
+  // Navigating to FastAPI is more reliable than proxying binary PDF content
+  // through Next.js on Windows Chrome.
+  const reportUrl = (inline = false) =>
+    `http://127.0.0.1:8000/api/reports/download${inline ? "?inline=true" : ""}`;
 
   const handleDownload = () => {
-    setMessage("Opening the live local PDF in a new tab. Use the browser download icon to save it.");
-    // Opening inline is reliable in browsers that suppress attachment downloads
-    // from a local application page.
-    window.open(reportUrl(true), "_blank", "noopener");
+    setMessage("Opening the live local PDF in this tab. Use the browser Back button to return to reports.");
+    // Same-tab navigation cannot be blocked as a popup by Chrome or the
+    // Codex in-app browser.
+    window.location.assign(reportUrl(true));
   };
 
   return (
@@ -37,12 +37,12 @@ export default function ReportsPage() {
         >
           Open Live PDF Report
         </button>
-        <button
-          onClick={() => window.open(reportUrl(true), "_blank", "noopener")}
+        <a
+          href={reportUrl(false)}
           className="ml-3 px-5 py-2.5 border border-slate-600 hover:border-slate-400 text-slate-200 font-medium rounded-lg transition-colors"
         >
           Download PDF File
-        </button>
+        </a>
         {message && <p className="mt-3 text-sm text-slate-400">{message}</p>}
       </div>
     </div>
