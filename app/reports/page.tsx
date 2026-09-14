@@ -9,10 +9,10 @@ export default function ReportsPage() {
   };
 
   const handleDownload = () => {
-    setMessage("Generating and downloading the live local PDF…");
-    // Let the browser process the server PDF directly; this avoids unreliable
-    // object-URL/Blob PDF rendering in some Windows Chrome installations.
-    window.location.assign(reportUrl());
+    setMessage("Opening the live local PDF in a new tab. Use the browser download icon to save it.");
+    // Opening inline is reliable in browsers that suppress attachment downloads
+    // from a local application page.
+    window.open(reportUrl(true), "_blank", "noopener");
   };
 
   return (
@@ -35,13 +35,13 @@ export default function ReportsPage() {
           onClick={handleDownload}
           className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg shadow transition-colors flex items-center gap-2"
         >
-          Download Live PDF Compliance Report
+          Open Live PDF Report
         </button>
         <button
           onClick={() => window.open(reportUrl(true), "_blank", "noopener")}
           className="ml-3 px-5 py-2.5 border border-slate-600 hover:border-slate-400 text-slate-200 font-medium rounded-lg transition-colors"
         >
-          Open PDF Preview
+          Download PDF File
         </button>
         {message && <p className="mt-3 text-sm text-slate-400">{message}</p>}
       </div>

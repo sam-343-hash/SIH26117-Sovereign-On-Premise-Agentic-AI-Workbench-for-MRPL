@@ -59,11 +59,16 @@ export async function GET(req: NextRequest) {
     if (!backendRes.ok) {
       return new NextResponse(`Upstream returned ${backendRes.status}`, { status: backendRes.status });
     }
-    return new NextResponse(backendRes.body, {
+    // Buffer the small report before returning it. Chrome's PDF viewer can
+    // reject a chunked proxy stream even when the FastAPI PDF is valid.
+    const pdfBytes = await backendRes.arrayBuffer();
+    return new NextResponse(pdfBytes, {
       status: backendRes.status,
       headers: {
         "Content-Type": backendRes.headers.get("content-type") || "application/octet-stream",
         "Content-Disposition": backendRes.headers.get("content-disposition") || "attachment",
+        "Content-Length": String(pdfBytes.byteLength),
+        "Cache-Control": "no-store",
       },
     });
   } catch (err: unknown) {
