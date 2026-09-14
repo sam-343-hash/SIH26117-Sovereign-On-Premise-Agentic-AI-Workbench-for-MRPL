@@ -19,6 +19,7 @@ backend/.env
 work/
 runtime/
 runtime/next-cache/
+runtime/next-cache-v2/
 logs/
-reports/
+/reports/
 diagnostics/

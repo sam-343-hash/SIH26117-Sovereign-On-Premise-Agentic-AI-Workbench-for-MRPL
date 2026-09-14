@@ -4,7 +4,7 @@ $BackendRoot = Join-Path $ProjectRoot 'backend'
 $VenvPython = Join-Path $BackendRoot 'venv\Scripts\python.exe'
 $RuntimeRoot = Join-Path $ProjectRoot 'runtime'
 $LogRoot = Join-Path $RuntimeRoot 'logs'
-$NextRuntimeCache = Join-Path $RuntimeRoot 'next-cache'
+$NextRuntimeCache = Join-Path $RuntimeRoot 'next-cache-v2'
 $PidFile = Join-Path $RuntimeRoot 'processes.json'
 
 function Write-Ok([string]$Message) { Write-Host "[OK] $Message" -ForegroundColor Green }

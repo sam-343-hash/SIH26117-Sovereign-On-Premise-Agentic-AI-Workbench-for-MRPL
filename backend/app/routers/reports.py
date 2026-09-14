@@ -1,6 +1,8 @@
 import io
 from datetime import datetime
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import FileResponse
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
@@ -10,6 +12,8 @@ from app.models.document import Document
 from app.models.safety import SafetyFlagRow
 
 router = APIRouter(tags=["Reports"])
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+REPORT_OUTPUT_DIR = PROJECT_ROOT / "runtime" / "reports"
 
 def draw_wrapped(pdf, text, x, y, width, size=10):
     words = text.encode("ascii", "replace").decode("ascii").split()
@@ -47,5 +51,14 @@ async def generate_live_pdf_report(inline: bool = Query(False), session: Session
     pdf.setFont("Helvetica", 8); pdf.setFillColorRGB(.35,.35,.35); pdf.drawString(42, 28, "Demo report: verify safety-critical guidance against approved site procedures.")
     pdf.save(); data = buffer.getvalue(); buffer.close()
     if not data.startswith(b"%PDF"): raise HTTPException(status_code=500, detail="Report generation produced an invalid PDF.")
+    REPORT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    report_path = REPORT_OUTPUT_DIR / f"RefinaAI_Compliance_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    report_path.write_bytes(data)
     disposition = "inline" if inline else "attachment"
-    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": f"{disposition}; filename=RefinaAI_Compliance_Report_{datetime.now().strftime('%Y%m%d')}.pdf"})
+    return FileResponse(
+        report_path,
+        media_type="application/pdf",
+        filename=report_path.name,
+        content_disposition_type=disposition,
+        headers={"Cache-Control": "no-store"},
+    )
