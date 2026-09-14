@@ -11,12 +11,11 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type BackendDocument = {
   id: number;
-  name: string;
-  doc_type: DocRow["type"];
-  pages: number;
-  size_label: string;
+  filename: string;
+  total_pages: number;
+  file_size_bytes: number;
   status: DocRow["status"];
-  uploaded_at: string;
+  created_at: string;
 };
 
 const statusMap: Record<DocRow["status"], { icon: React.ElementType; variant: any }> = {
@@ -112,8 +111,8 @@ export default function UploadPage() {
               Drop refinery documents to ingest
             </p>
             <p className="max-w-md text-sm text-slate-400">
-              PDFs, scanned reports, and DOCX files are chunked, embedded, and indexed
-              automatically. Scanned pages are read with Qwen2.5-VL.
+              PDFs, DOCX files, and text documents are chunked, embedded, and indexed
+              locally with Ollama.
             </p>
             <label className="mt-2 cursor-pointer rounded-lg bg-flux px-5 py-2.5 text-sm font-medium text-slate-950 shadow-glow-flux hover:bg-flux-light">
               {uploading ? "Indexing..." : "Browse files"}
@@ -121,7 +120,7 @@ export default function UploadPage() {
                 type="file"
                 multiple
                 className="hidden"
-                accept=".pdf,.docx"
+                accept=".pdf,.docx,.txt"
                 disabled={uploading}
                 onChange={(event) => {
                   if (event.target.files) uploadFiles(event.target.files);
@@ -129,7 +128,7 @@ export default function UploadPage() {
                 }}
               />
             </label>
-            <p className="text-xs text-slate-600">Supports PDF, DOCX · up to 200MB per file</p>
+            <p className="text-xs text-slate-600">Supports PDF, DOCX, TXT · up to 15MB per file</p>
             {error && <p className="max-w-md text-xs text-red-300">{error}</p>}
           </CardContent>
         </Card>
@@ -194,15 +193,22 @@ export default function UploadPage() {
 }
 
 function toDocRow(document: BackendDocument): DocRow {
+  const lowerName = document.filename.toLowerCase();
+  const type: DocRow["type"] = lowerName.endsWith(".docx") ? "DOCX" : "PDF";
   return {
     id: String(document.id),
-    name: document.name,
-    type: document.doc_type,
-    pages: document.pages,
-    size: document.size_label,
+    name: document.filename,
+    type,
+    pages: document.total_pages,
+    size: formatFileSize(document.file_size_bytes),
     status: document.status,
-    uploaded: formatRelativeTime(document.uploaded_at),
+    uploaded: formatRelativeTime(document.created_at),
   };
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function formatRelativeTime(value: string) {

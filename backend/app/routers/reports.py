@@ -1,6 +1,6 @@
 import io
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlmodel import Session, select
 from app.database import get_session
 from app.models.document import Document
@@ -13,7 +13,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 router = APIRouter(tags=["Reports"])
 
 @router.get("/download")
-async def generate_live_pdf_report(session: Session = Depends(get_session)):
+async def generate_live_pdf_report(inline: bool = Query(False), session: Session = Depends(get_session)):
     documents = list(session.exec(select(Document)).all())
     flags = list(session.exec(select(SafetyFlagRow).order_by(SafetyFlagRow.created_at.desc())).all())
     buffer = io.BytesIO()
@@ -60,5 +60,5 @@ async def generate_live_pdf_report(session: Session = Depends(get_session)):
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=RefinaAI_Compliance_Report_{datetime.now().strftime('%Y%m%d')}.pdf"}
+        headers={"Content-Disposition": f"{'inline' if inline else 'attachment'}; filename=RefinaAI_Compliance_Report_{datetime.now().strftime('%Y%m%d')}.pdf"}
     )
