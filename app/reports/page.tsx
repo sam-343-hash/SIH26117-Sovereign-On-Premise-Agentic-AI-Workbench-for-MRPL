@@ -7,9 +7,8 @@ export default function ReportsPage() {
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-      const response = await fetch(`${apiBase}/api/reports/download`);
-      if (!response.ok) throw new Error("Download failed");
+      const response = await fetch("/api/backend-proxy?path=/api/reports/download");
+      if (!response.ok) throw new Error(`Report API returned ${response.status}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -19,7 +18,8 @@ export default function ReportsPage() {
       a.click();
       a.remove();
     } catch (e) {
-      alert("Error connecting to backend report generator. Ensure backend is running on port 8000.");
+      const detail = e instanceof Error ? e.message : "Unknown error";
+      alert(`Report generation failed: ${detail}`);
     } finally {
       setDownloading(false);
     }

@@ -45,3 +45,29 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export async function GET(req: NextRequest) {
+  try {
+    const endpoint = req.nextUrl.searchParams.get("path") || "/api/health";
+    if (!endpoint.startsWith("/api/")) {
+      return NextResponse.json({ detail: "Invalid backend API path." }, { status: 400 });
+    }
+    const backendRes = await fetch(`${BACKEND_API_URL}${endpoint}`, {
+      method: "GET",
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!backendRes.ok) {
+      return new NextResponse(`Upstream returned ${backendRes.status}`, { status: backendRes.status });
+    }
+    return new NextResponse(backendRes.body, {
+      status: backendRes.status,
+      headers: {
+        "Content-Type": backendRes.headers.get("content-type") || "application/octet-stream",
+        "Content-Disposition": backendRes.headers.get("content-disposition") || "attachment",
+      },
+    });
+  } catch (err: unknown) {
+    const detail = err instanceof Error ? err.message : "Failed to communicate with local backend gateway";
+    return NextResponse.json({ detail }, { status: 502 });
+  }
+}
