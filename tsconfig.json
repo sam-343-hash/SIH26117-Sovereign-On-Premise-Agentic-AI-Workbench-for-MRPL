@@ -33,7 +33,8 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    "runtime/next-cache/types/**/*.ts"
+    "runtime/next-cache/types/**/*.ts",
+    "runtime/next-cache-v2/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

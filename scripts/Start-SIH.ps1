@@ -22,7 +22,9 @@ for ($i = 0; $i -lt 30 -and -not (Test-Http 'http://127.0.0.1:8000/api/health');
 if (-not (Test-Http 'http://127.0.0.1:8000/api/health')) { Write-Fail 'Backend did not become healthy. Read runtime\logs\backend-error.log'; exit 1 }
 Write-Ok 'Backend health check passed'
 if (Test-ListeningPort 3000) { Write-Info 'Port 3000 is already in use; frontend will not be started again.' } else {
-  $frontendCommand = 'set "NEXT_DIST_DIR=runtime/next-cache-v2" && npm run dev 1> runtime\logs\frontend.log 2> runtime\logs\frontend-error.log'
+  # Use the single-process launcher: it works even when Windows blocks the
+  # worker fork used by the standard `next dev` command.
+  $frontendCommand = 'set "NEXT_DIST_DIR=runtime/next-cache-v2" && node scripts\local-next-server.cjs 1> runtime\logs\frontend.log 2> runtime\logs\frontend-error.log'
   $frontend = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c',$frontendCommand -WorkingDirectory $ProjectRoot -WindowStyle Hidden -PassThru
   $frontendPid = $frontend.Id
 }
